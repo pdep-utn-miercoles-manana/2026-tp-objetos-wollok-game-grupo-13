@@ -5,12 +5,12 @@ method iniciar(){
     game.width(20)
     game.height(14)
 
-    //Hace que se mueva con las teclas
     game.addVisualCharacter(bomberman)
     
     game.onCollideDo(bomberman,{ algo => algo.teAgarro() })
 
     game.schedule(2000, {game.removeTickEvent("aparece bicho")})
+    game.schedule(2000, {game.removeTickEvent("aparece roca")})
 
     keyboard.space().onPressDo({
         bomberman.poneBomba()
@@ -25,7 +25,7 @@ method iniciar(){
     }
 
     method generarRocas () {
-        game.schedule(500, {self.generarRoca()})
+        game.onTick(500,"aparece roca", {self.generarRoca()})
     }
 
     method generarRoca() {
@@ -45,7 +45,7 @@ method iniciar(){
         0.randomUpTo(game.height())
     )
 
-    method terminar(){
+    method perder(){
         game.clear()
         game.addVisual(bomberman)
         game.say(bomberman, "Perdi")
@@ -53,16 +53,30 @@ method iniciar(){
 }
 
 object bomberman {
-    var property position = game.center()
+    var position = game.center()
     var vidas = 3
+    
+    method esAtravesable() = true
+
+    method position() = position
+    
+    method position(nuevaPosicion) {
+        if (self.puedeMoverseA(nuevaPosicion)) {
+            position = nuevaPosicion
+        }
+    }
+
+    method puedeMoverseA(posicion) {
+        return game.getObjectsIn(posicion).all({ objeto => objeto.esAtravesable() })
+    }
 
     method image () = "assets/bomberman.png"
 
     method perderVida() {
-        game.say(self, self.vida().toString())
         vidas -= 1
-        if (vidas < 0){
-            juego.terminar()
+        game.say(self, self.vida().toString())
+        if (vidas == 0){
+            juego.perder()
         }
     }
 
@@ -83,6 +97,7 @@ object bomberman {
 }
 
 class Bomba {
+    method esAtravesable() = false
     var position
     method image() = "assets/bomba.png"
     method position() = position
@@ -127,6 +142,7 @@ class Bomba {
 
 class Fuego {
     var position
+    method esAtravesable() = true
     method image() = "assets/explocionCentro1.png"
     method position() = position
 
@@ -140,7 +156,7 @@ class Fuego {
 
 }
 class Bicho {
-
+    method esAtravesable() = true
     var position = null
     method image() = "assets/ballom.png"
 
@@ -155,11 +171,12 @@ class Bicho {
     }
 
     method moverseAleatoriamente() {
-        position = game.at(
-            position.x() + 1,
-            position.y() - 1
-        )
     }
+
+    method puedeMoverseA(posicion) {
+        return game.getObjectsIn(posicion).all({ objeto => objeto.esAtravesable() })
+    }
+
 
     method perderVida() {
         game.removeVisual(self)
@@ -169,11 +186,13 @@ class Bicho {
     method quemarse() {
         self.perderVida()
     }
+
     method position() = position
 
 }
 class Roca {
     const position = null
+    method esAtravesable() = false
 
     method image() = "assets/ladrilloPiedra.png"
 
