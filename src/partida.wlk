@@ -1,9 +1,11 @@
 import wollok.game.*
+import jugador.*
+import arena.*
 
 object partida {
     const property jugadores =  []
     const property unaArena = arena
-    const property gestorLava = unGestorLava
+    const property unGestorLava = gestorLava
 
     method iniciar() {
         game.clear()
@@ -34,7 +36,7 @@ object partida {
     }
     method terminarPartida(ganador) {
         game.removeTickEvent("colapsoPerimetro")
-        gestorLava.detener()
+        unGestorLava.detener()
         
         if (ganador != null) {
             game.say(ganador, "¡Victoria en la Tierra Media!")
