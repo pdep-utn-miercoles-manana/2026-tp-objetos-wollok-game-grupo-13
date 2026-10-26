@@ -55,7 +55,7 @@ class PowerUp inherits ElementoTablero {
     override method permitePaso() = true
     
     
-    method interactuarCon(unJugador) {
+    override method interactuarCon(unJugador) {
         self.aplicarEfecto(unJugador)
         game.removeVisual(self)
     }
@@ -63,7 +63,7 @@ class PowerUp inherits ElementoTablero {
     method aplicarEfecto(unJugador)
     
     override method serAlcanzadoPorFuego() {
-        game.removeVisual(self)
+        game.removeVisual(self) // Si al powerup lo alcanza un fuego lo desaparece
     }
 }
 
@@ -71,7 +71,7 @@ class PatinVelocidad inherits PowerUp {
     override method image() = "powerup_velocidad.png" //TODO : Generar este sprite con alguna IA 
     
     override method aplicarEfecto(unJugador) {
-        // No se define que hacer todavia
+        // No se define que hacer todavia, probablemente reducir el tiempo de explosion de bomba
     }
 }
 
@@ -125,20 +125,20 @@ class Explosion {
         }
     }
 
-    method impactarEn(pos) {
-        const objetos = game.getObjectsIn(pos)
-        objetos.forEach({ obj => obj.serAlcanzadoPorFuego() })
-        return objetos.any({ obj => not obj.permitePaso() })
+    method impactarEn(unaPosicion) {
+        const objetos = game.getObjectsIn(unaPosicion)
+        objetos.forEach({ unObjeto => unObjeto.serAlcanzadoPorFuego() })
+        return objetos.any({ unObjeto => not unObjeto.permitePaso() })
     }
 
-    method crearLlamaVisualEn(pos) {
-        const llama = new Explosion(posicion = pos)
+    method crearLlamaVisualEn(unaPosicion) {
+        const llama = new Explosion(posicion = unaPosicion)
         game.addVisual(llama)
         game.schedule(duracionMs, { game.removeVisual(llama) })
     }
 
-    method esPosicionValida(pos) {
-        return pos.x().between(0, game.width() - 1) and pos.y().between(0, game.height() - 1)
+    method esPosicionValida(unaPosicion) {
+        return unaPosicion.x().between(0, game.width() - 1) and unaPosicion.y().between(0, game.height() - 1)
     }
 }
 
@@ -155,6 +155,7 @@ class Bomba inherits ElementoTablero {
     
     method detonar() {
         if (activa) {
+            // Para este caso la bomba explota, desaparece la bomba y luego se propaga el fuego
             activa = false
             game.removeVisual(self)
             duenio.recuperarBomba()
@@ -165,7 +166,7 @@ class Bomba inherits ElementoTablero {
     }
     
     override method serAlcanzadoPorFuego() {
-        self.detonar() // Reacción en cadena
+        self.detonar() // Si a una bomba lo alcanza el fuego de otra bomba, esta explota en cadena
     }
     
     override method caerAlVacio() {

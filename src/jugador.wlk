@@ -9,9 +9,15 @@ class Jugador inherits ElementoTablero {
     var property alcanceFuego = 1
     var property vidas = 1
     var property estaVivo = true
-
+    var controles = null
     override method image() = "jugador_" + color + ".png"
 
+    method asignarControles(unMapeoTeclas){
+        controles = unMapeoTeclas
+        controles.jugador(self)
+        controles.configurar()
+
+    }
     method moverHacia(direccion) {
         self.mover(direccion.siguiente(self.posicion()))
     }
@@ -19,8 +25,7 @@ class Jugador inherits ElementoTablero {
     method mover(nuevaPosicion) {
         if (estaVivo and self.puedeMoverseA(nuevaPosicion)) {
             posicion = nuevaPosicion
-            
-            // Polimorfismo con los elementos pisados (Power-Ups, etc.)
+            //polimorfismo con los elementos pisados (Power-Ups, etc.)
             game.getObjectsIn(nuevaPosicion).forEach({ unObjeto => 
                 if (unObjeto != self) unObjeto.interactuarCon(self) 
             })
