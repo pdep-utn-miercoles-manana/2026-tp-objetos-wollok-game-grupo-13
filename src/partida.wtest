@@ -1,0 +1,250 @@
+import wollok.game.*
+import partida.*
+import arena.*
+import superficie.*
+import direcciones.*
+import elementos.*
+import ui.*
+import menu.*
+import victorias.*
+
+describe "Tests del tablero top-down, jugador, bombas, anillo de magma e interfaz UI" {
+
+    test "Al iniciar la partida se crea la grilla 15x13 de baldosas más la barra UI y Frodo puede caminar y plantar bombas" {
+        partida.iniciar()
+
+        assert.equals(15, game.width())
+        assert.equals(14, game.height())
+        assert.equals(15 * 13, arena.celdas().size())
+
+        const frodo = partida.jugadorPrincipal()
+        assert.equals(game.at(1, 1), frodo.position())
+        assert.equals("jugador_frodo_abajo_1.png", frodo.image())
+
+        // Iniciar movimiento fluido hacia arriba (avanza en sub-pasos de 0.25 celdas hasta (1, 2))
+        frodo.iniciarMovimiento(arriba)
+        assert.equals(arriba, frodo.direccionActiva())
+        assert.equals(game.at(1, 1.25), frodo.position())
+        assert.equals("jugador_frodo_arriba_2.png", frodo.image())
+
+        // Completar los 3 sub-pasos restantes para llegar a la celda (1, 2) avanzando por el grid de 5 frames
+        frodo.moverHacia(arriba)
+        assert.equals("jugador_frodo_arriba_2.png", frodo.image())
+        frodo.moverHacia(arriba)
+        assert.equals("jugador_frodo_arriba_3.png", frodo.image())
+        frodo.moverHacia(arriba)
+        assert.equals(game.at(1, 2), frodo.position())
+        assert.equals("jugador_frodo_arriba_3.png", frodo.image())
+
+        frodo.detenerMovimiento(arriba)
+        assert.equals(null, frodo.direccionActiva())
+        assert.equals("jugador_frodo_arriba_1.png", frodo.image())
+
+        // Plantar bomba en (1, 2)
+        frodo.plantarBomba()
+        assert.equals(1, frodo.bombasActuales())
+        assert.equals(0, frodo.bombasDisponibles())
+        assert.that(game.getObjectsIn(game.at(1, 2)).any({ obj => obj.image() == "bomba_1.png" }))
+    }
+
+    test "El anillo de magma colapsa el perímetro exterior convirtiendo las celdas en BaldosaAbismo" {
+        partida.iniciar()
+
+        assert.equals(52, arena.casillasEnAnillo(1).size())
+        assert.equals(0, gestorLava.nivelColapso())
+        gestorLava.colapsarSiguienteAnillo()
+        assert.equals(1, gestorLava.nivelColapso())
+
+        const esquina = game.at(0, 0)
+        assert.that(arena.esPosicionEnLava(esquina))
+        assert.that(game.getObjectsIn(esquina).any({ obj => obj.image() == "lava_anillo_1_1.png" and not obj.permitePaso() }))
+    }
+
+    test "La interfaz UI refleja los jugadores activos, sus estadísticas y la cuenta regresiva de la lava" {
+        partida.iniciar()
+
+        assert.equals(1, interfazUI.cantidadJugadoresVivos())
+        assert.equals(20, gestorLava.segundosParaColapso())
+        assert.equals("PROX. ANILLO DE LAVA\nEn 20 seg", indicadorRelojLavaUI.text())
+
+        gestorLava.avanzarSegundo()
+        assert.equals(19, gestorLava.segundosParaColapso())
+        assert.equals("PROX. ANILLO DE LAVA\nEn 19 seg", indicadorRelojLavaUI.text())
+
+        assert.equals("ANILLO MAGMA: 0/3\nActivos: 1/1", indicadorEstadoArenaUI.text())
+    }
+
+    test "Cuando ningún jugador queda vivo se activa el Game Over y se muestra el cartel en pantalla" {
+        partida.iniciar()
+        const frodo = partida.jugadorPrincipal()
+
+        assert.notThat(partida.partidaTerminada())
+        assert.notThat(interfazUI.gameOverVisible())
+
+        frodo.serAlcanzadoPorFuego()
+
+        assert.notThat(frodo.estaVivo())
+        assert.equals(0, interfazUI.cantidadJugadoresVivos())
+        assert.that(partida.partidaTerminada())
+        assert.that(interfazUI.gameOverVisible())
+        assert.that(game.hasVisual(cartelGameOverUI))
+        assert.equals("¡GAME OVER!\nPartida finalizada", indicadorRelojLavaUI.text())
+
+        // Simular que el juego está corriendo en el navegador y se reinicia la partida (tecla R)
+        game.start()
+        partida.iniciar()
+        assert.notThat(partida.partidaTerminada())
+        assert.notThat(interfazUI.gameOverVisible())
+        assert.equals(1, interfazUI.cantidadJugadoresVivos())
+        assert.that(partida.jugadorPrincipal().estaVivo())
+        game.stop()
+    }
+
+    test "Al presionar ESC se pausa la partida, se muestra el cartel Pausa y se congela el movimiento y la lava" {
+        partida.iniciar()
+        const frodo = partida.jugadorPrincipal()
+
+        partida.alternarPausa()
+        assert.that(partida.juegoPausado())
+        assert.that(interfazUI.pausaVisible())
+        assert.that(game.hasVisual(cartelPausaUI))
+        assert.equals("JUEGO EN PAUSA\n[ESC] para continuar", indicadorRelojLavaUI.text())
+
+        // Mientras está en pausa, ni el jugador se mueve ni baja el reloj de lava
+        frodo.iniciarMovimiento(arriba)
+        assert.equals(game.at(1, 1), frodo.position())
+        gestorLava.avanzarSegundo()
+        assert.equals(20, gestorLava.segundosParaColapso())
+
+        // Al volver a presionar ESC se reanuda todo normalmente
+        partida.alternarPausa()
+        assert.notThat(partida.juegoPausado())
+        assert.notThat(interfazUI.pausaVisible())
+        assert.notThat(game.hasVisual(cartelPausaUI))
+        frodo.iniciarMovimiento(arriba)
+        assert.equals(game.at(1, 1.25), frodo.position())
+    }
+
+    test "El selector de personajes permite habilitar hasta 4 jugadores y arrancar en modo todos contra todos" {
+        menuSeleccion.iniciar()
+        assert.that(menuSeleccion.enMenu())
+        assert.equals(2, menuSeleccion.cantidadActivos())
+
+        // Activar los casilleros 3 y 4 para jugar de a 4 jugadores
+        menuSeleccion.alternarSlot(2)
+        menuSeleccion.alternarSlot(3)
+        assert.equals(4, menuSeleccion.cantidadActivos())
+
+        // Iniciar la partida desde el selector
+        menuSeleccion.confirmarSeleccionEIniciar()
+        assert.notThat(menuSeleccion.enMenu())
+        assert.equals(4, partida.jugadoresActivos().size())
+        assert.equals(4, interfazUI.cantidadJugadoresVivos())
+
+        // Verificar que las 4 esquinas son transitables y los 4 personajes están en sus posiciones
+        const j1 = partida.jugadoresActivos().get(0)
+        const j2 = partida.jugadoresActivos().get(1)
+        const j3 = partida.jugadoresActivos().get(2)
+        const j4 = partida.jugadoresActivos().get(3)
+
+        assert.equals("frodo", j1.color())
+        assert.equals("gandalf", j2.color())
+        assert.equals("aragorn", j3.color())
+        assert.equals("legolas", j4.color())
+
+        // Si caen 2 jugadores el juego sigue porque aún quedan 2 jugadores vivos
+        j1.serAlcanzadoPorFuego()
+        j2.serAlcanzadoPorFuego()
+        assert.notThat(partida.partidaTerminada())
+        assert.equals(2, interfazUI.cantidadJugadoresVivos())
+
+        // Cuando cae el 3er jugador y queda 1 solo jugador en pie (j4), se muestra al ganador
+        j3.serAlcanzadoPorFuego()
+        assert.that(partida.partidaTerminada())
+        assert.that(interfazUI.victoriaVisible())
+        assert.equals(j4, interfazUI.jugadorGanador())
+        assert.that(game.hasVisual(cartelVictoriaUI))
+        assert.equals("¡GANADOR: JUGADOR 4 (LEGOLAS)!\n[R] Revancha  |  [M] Selector", textoVictoriaUI.text())
+        assert.equals(1, registroVictorias.victoriasDe(4))
+
+        // Cambiar personaje en selector e incluir a Sauron
+        menuSeleccion.iniciar()
+        const slot1 = menuSeleccion.slots().first()
+        slot1.siguientePersonaje() // gandalf
+        slot1.siguientePersonaje() // aragorn
+        slot1.siguientePersonaje() // legolas
+        slot1.siguientePersonaje() // sauron
+        assert.equals("sauron", slot1.personajeElegido())
+        menuSeleccion.confirmarSeleccionEIniciar()
+        const sauron = partida.jugadorPrincipal()
+        assert.equals("sauron", sauron.color())
+        assert.equals("jugador_sauron_abajo_1.png", sauron.image())
+        sauron.iniciarMovimiento(arriba)
+        assert.equals("jugador_sauron_arriba_2.png", sauron.image())
+    }
+
+    test "Los géiseres de magma suben y bajan cíclicamente con sus 5 frames de animación" {
+        partida.iniciar()
+        const geiserCentral = gestorGeiseres.geiseres().first()
+
+        // 1. Inicia bajo en el frame 1 y avanza por los frames 1..5
+        assert.notThat(geiserCentral.estaAlto())
+        assert.that(geiserCentral.permitePaso())
+        assert.equals("geiser_bajo_1.png", geiserCentral.image())
+        gestorGeiseres.avanzarTickAnimacion()
+        assert.equals("geiser_bajo_2.png", geiserCentral.image())
+
+        // 2. Avanza a advertencia (burbujeando): sigue permitiendo salir antes de que suba
+        gestorGeiseres.avanzarCiclo()
+        assert.notThat(geiserCentral.estaAlto())
+        assert.that(geiserCentral.permitePaso())
+        assert.equals("geiser_advertencia_1.png", geiserCentral.image())
+
+        // 3. Sube (erupción alta): bloquea el paso y quema a quien esté parado encima
+        const frodo = partida.jugadorPrincipal()
+        frodo.posicion(geiserCentral.position())
+        gestorGeiseres.avanzarCiclo()
+        assert.that(geiserCentral.estaAlto())
+        assert.notThat(geiserCentral.permitePaso())
+        assert.equals("geiser_alto_1.png", geiserCentral.image())
+        assert.notThat(frodo.estaVivo())
+
+        // 4. Vuelve a bajar en el siguiente paso del ciclo
+        gestorGeiseres.avanzarCiclo()
+        assert.notThat(geiserCentral.estaAlto())
+        assert.that(geiserCentral.permitePaso())
+        assert.equals("geiser_bajo_1.png", geiserCentral.image())
+
+        // 5. Los géiseres nunca aparecen sobre cajas de madera ni obstáculos
+        assert.equals(5, gestorGeiseres.geiseres().size())
+        gestorGeiseres.geiseres().forEach({ geiser =>
+            assert.notThat(game.getObjectsIn(geiser.position()).any({ objeto => not objeto.permitePaso() and objeto != geiser }))
+        })
+    }
+
+    test "Las zonas de spawn aseguran siempre 5 casillas libres en L para escapar de bombas al romper cajas" {
+        partida.iniciar()
+        
+        // Esquina inferior izquierda (Jugador 1 / Frodo)
+        const celdasSegurasJ1 = [game.at(1, 1), game.at(1, 2), game.at(2, 1), game.at(1, 3), game.at(3, 1)]
+        celdasSegurasJ1.forEach({ celda =>
+            assert.that(arena.esZonaSeguraSpawn(celda.x(), celda.y()))
+            // No debe haber ninguna caja ni bloque que bloquee el escape
+            assert.notThat(game.getObjectsIn(celda).any({ objeto => not objeto.permitePaso() and objeto != partida.jugadorPrincipal() }))
+        })
+
+        // Esquina superior derecha (Jugador 2)
+        const celdasSegurasJ2 = [
+            game.at(arena.ancho() - 2, arena.alto() - 2),
+            game.at(arena.ancho() - 2, arena.alto() - 3),
+            game.at(arena.ancho() - 3, arena.alto() - 2),
+            game.at(arena.ancho() - 2, arena.alto() - 4),
+            game.at(arena.ancho() - 4, arena.alto() - 2)
+        ]
+        celdasSegurasJ2.forEach({ celda =>
+            assert.that(arena.esZonaSeguraSpawn(celda.x(), celda.y()))
+            assert.notThat(game.getObjectsIn(celda).any({ objeto => not objeto.permitePaso() and not partida.jugadoresActivos().contains(objeto) }))
+        })
+        assert.that(true)
+    }
+}

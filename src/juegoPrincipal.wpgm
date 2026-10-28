@@ -1,8 +1,7 @@
 import wollok.game.*
-import juego.*
-
+import menu.*
 
 program juegoX {
-    juego.iniciar()
+    menuSeleccion.iniciar()
     game.start()
 }

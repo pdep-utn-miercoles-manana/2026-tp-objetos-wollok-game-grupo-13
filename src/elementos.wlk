@@ -1,181 +1,266 @@
 import wollok.game.*
 import src.jugador.*
 import src.direcciones.*
+import src.superficie.*
+import src.partida.*
+import src.arena.*
+import src.audio.*
 
-class ElementoTablero {
+class BloqueIndestructible inherits Superficie {
+    var imagenActual = "muro_indestructible_1.png"
+
+    override method image() = imagenActual
+    override method permitePaso() = false
+
+    method actualizarFrame(unNumeroFrame) {
+        imagenActual = "muro_indestructible_" + unNumeroFrame + ".png"
+    }
+}
+
+class CajaDestructible inherits Superficie {
+    override method image() = "caja_madera.png"
+    override method permitePaso() = false
+    
+    override method serAlcanzadoPorFuego() {
+        self.soltarPowerUpOpcional()
+        game.removeVisual(self)
+    }
+
+    method soltarPowerUpOpcional() {
+        const probabilidadAzar = 1.randomUpTo(10).round()
+        if (probabilidadAzar == 1) game.addVisual(new FuegoExtra(position = self.position()))
+        if (probabilidadAzar == 2) game.addVisual(new BombaExtra(position = self.position()))
+        if (probabilidadAzar == 3) game.addVisual(new PatinVelocidad(position = self.position()))
+    }
+}
+
+object gestorBombas {
+    const property bombasActivas = []
+    const property explosionesActivas = []
+    var relojActivo = false
+    const intervaloMilisegundos = 150
+
+    method iniciar() {
+        self.detener()
+        self.asegurarRelojActivo()
+    }
+
+    method asegurarRelojActivo() {
+        if (not relojActivo) {
+            relojActivo = true
+            game.onTick(intervaloMilisegundos, "RELOJ_BOMBAS", { self.avanzarTick() })
+        }
+    }
+
+    method detener() {
+        bombasActivas.clear()
+        explosionesActivas.clear()
+        if (relojActivo) {
+            relojActivo = false
+            game.removeTickEvent("RELOJ_BOMBAS")
+        }
+    }
+
+    method registrarBomba(unaBomba) {
+        self.asegurarRelojActivo()
+        bombasActivas.add(unaBomba)
+    }
+
+    method removerBomba(unaBomba) {
+        bombasActivas.remove(unaBomba)
+    }
+
+    method registrarExplosion(unaExplosion) {
+        self.asegurarRelojActivo()
+        explosionesActivas.add(unaExplosion)
+    }
+
+    method removerExplosion(unaExplosion) {
+        explosionesActivas.remove(unaExplosion)
+    }
+
+    method detonarBombasEn(unaPosicion) {
+        if (not bombasActivas.isEmpty()) {
+            const copiaBombas = []
+            copiaBombas.addAll(bombasActivas)
+            copiaBombas.forEach({ bomba =>
+                if (bomba.posicion() == unaPosicion) {
+                    bomba.detonar()
+                }
+            })
+        }
+    }
+
+    method avanzarTick() {
+        if (not partida.juegoPausado() and not partida.partidaTerminada()) {
+            if (not bombasActivas.isEmpty()) {
+                const copiaBombas = []
+                copiaBombas.addAll(bombasActivas)
+                copiaBombas.forEach({ bomba => bomba.avanzarTiempo(intervaloMilisegundos) })
+            }
+            if (not explosionesActivas.isEmpty()) {
+                const copiaExplosiones = []
+                copiaExplosiones.addAll(explosionesActivas)
+                copiaExplosiones.forEach({ explosion => explosion.avanzarTiempo(intervaloMilisegundos) })
+            }
+        }
+    }
+}
+
+class Bomba {
     var property posicion
-    
-    method image()
+    var property duenio
+    var property alcance
+    var property duracionMilisegundos = 3000
+    var tiempoRestanteMilisegundos = duracionMilisegundos
+    var activa = false
+    var frameActual = 1
+    var imagenActual = "bomba_1.png"
+
+    method duracionMs() = duracionMilisegundos
+    method duracionMs(unValor) { duracionMilisegundos = unValor }
+
+    method position() = posicion
+    method image() = imagenActual
     method permitePaso() = false
-    
-    method caerAlVacio() {
-        game.removeVisual(self)
-    }
-    
-    method sumergirEnLava() {
-        game.removeVisual(self)
-    }
-    
-    method serAlcanzadoPorFuego()
+    method interactuarCon(unJugador) {}
+    method serAlcanzadoPorFuego() { self.detonar() }
+    method colapsarEnAbismo() { self.detonar() }
 
-    method interactuarCon(jugador) {}
-}
+    method plantar() {
+        tiempoRestanteMilisegundos = duracionMilisegundos
+        frameActual = 1
+        imagenActual = "bomba_1.png"
+        activa = true
+        game.addVisual(self)
+        gestorBombas.registrarBomba(self)
+    }
 
-class BloqueIndestructible inherits ElementoTablero {
-    override method image() = "pilar_metal.png" //TODO : Generar este sprite con alguna IA 
-    
-    override method serAlcanzadoPorFuego() {
-        // Muro fijo: absorbe la onda expansiva sin romperse
+    method avanzarTiempo(deltaMilisegundos) {
+        if (activa and not partida.partidaTerminada()) {
+            frameActual = (frameActual % 5) + 1
+            imagenActual = "bomba_" + frameActual + ".png"
+            tiempoRestanteMilisegundos = 0.max(tiempoRestanteMilisegundos - deltaMilisegundos)
+            if (tiempoRestanteMilisegundos == 0) {
+                self.detonar()
+            }
+        }
     }
-    
-    override method sumergirEnLava() {
-        // Resiste la lava
-    }
-}
 
-class CajaDestructible inherits ElementoTablero {
-    override method image() = "caja_madera.png" //TODO : Generar este sprite con alguna IA 
-    
-    override method serAlcanzadoPorFuego() {
-        self.soltarPowerUp()
-        game.removeVisual(self)
-    }
-    
-    method soltarPowerUp() {
-        // 30% de probabilidad de dropear un Power-Up al azar
-        const azar = (1 .. 10).anyOne()
-        if (azar == 1) game.addVisual(new PatinVelocidad(posicion = self.posicion()))
-        if (azar == 2) game.addVisual(new BombaExtra(posicion = self.posicion()))
-        if (azar == 3) game.addVisual(new FuegoExtra(posicion = self.posicion()))
+    method detonar() {
+        if (activa) {
+            activa = false
+            gestorBombas.removerBomba(self)
+            game.removeVisual(self)
+            duenio.reintegrarBomba()
+            gestorAudio.reproducirExplosion()
+            const explosion = new Explosion(posicion = self.posicion())
+            explosion.propagar(alcance)
+        }
     }
 }
-
-
-class PowerUp inherits ElementoTablero {
-    override method permitePaso() = true
-    
-    
-    override method interactuarCon(unJugador) {
-        self.aplicarEfecto(unJugador)
-        game.removeVisual(self)
-    }
-    
-    method aplicarEfecto(unJugador)
-    
-    override method serAlcanzadoPorFuego() {
-        game.removeVisual(self) // Si al powerup lo alcanza un fuego lo desaparece
-    }
-}
-
-class PatinVelocidad inherits PowerUp {
-    override method image() = "powerup_velocidad.png" //TODO : Generar este sprite con alguna IA 
-    
-    override method aplicarEfecto(unJugador) {
-        // No se define que hacer todavia, probablemente reducir el tiempo de explosion de bomba
-    }
-}
-
-class BombaExtra inherits PowerUp {
-    override method image() = "powerup_bomba.png" //TODO : Generar este sprite con alguna IA 
-    
-    override method aplicarEfecto(unJugador) {
-        unJugador.bombasDisponibles(unJugador.bombasDisponibles() + 1)
-    }
-}
-
-class FuegoExtra inherits PowerUp {
-    override method image() = "powerup_fuego.png" //TODO : Generar este sprite con alguna IA 
-    
-    override method aplicarEfecto(unJugador) {
-        unJugador.alcanceFuego(unJugador.alcanceFuego() + 1)
-    }
-}
-
 
 class Explosion {
     var property posicion
-    var property duracionMs = 600
-    
-    method image() = "fuego.png" //TODO : Generar este sprite con alguna IA 
+    var property duracionMilisegundos = 450
+    var tiempoRestanteMilisegundos = duracionMilisegundos
+    const llamasActivas = []
+
+    method duracionMs() = duracionMilisegundos
+    method duracionMs(unValor) { duracionMilisegundos = unValor }
+
+    method position() = posicion
+    method image() = "fuego_centro.png"
     method permitePaso() = true
     method serAlcanzadoPorFuego() {}
+    method colapsarEnAbismo() {}
+    method interactuarCon(unJugador) {
+        unJugador.serAlcanzadoPorFuego()
+    }
 
     method propagar(alcance) {
-        self.crearLlamaVisualEn(self.posicion())
-        self.impactarEn(self.posicion())
+        llamasActivas.clear()
+        tiempoRestanteMilisegundos = duracionMilisegundos
+        self.impactarYCrearLlamaEn(self.posicion())
         
         direcciones.todas().forEach({ direccion => 
             self.expandirHacia(self.posicion(), direccion, alcance) 
         })
+
+        gestorBombas.registrarExplosion(self)
     }
 
-    method expandirHacia(posActual, direccion, pasosRestantes) {
+    method avanzarTiempo(deltaMilisegundos) {
+        tiempoRestanteMilisegundos = 0.max(tiempoRestanteMilisegundos - deltaMilisegundos)
+        if (tiempoRestanteMilisegundos == 0) {
+            self.extinguir()
+        }
+    }
+
+    method extinguir() {
+        gestorBombas.removerExplosion(self)
+        llamasActivas.forEach({ llama =>
+            game.removeVisual(llama)
+        })
+        llamasActivas.clear()
+    }
+
+    method expandirHacia(posicionActual, direccion, pasosRestantes) {
         if (pasosRestantes > 0) {
-            // El objeto direccion sabe como calcular su avance
-            const siguientePos = direccion.siguiente(posActual)
-            
-            if (self.esPosicionValida(siguientePos)) {
-                self.crearLlamaVisualEn(siguientePos)
-                const chocoConSolido = self.impactarEn(siguientePos)
-                
-                if (not chocoConSolido) {
-                    self.expandirHacia(siguientePos, direccion, pasosRestantes - 1)
+            const siguientePosicion = direccion.siguientePosicion(posicionActual)
+            if (self.esPosicionValida(siguientePosicion)) {
+                const impactoContraSolido = self.impactarYCrearLlamaEn(siguientePosicion)
+                if (not impactoContraSolido) {
+                    self.expandirHacia(siguientePosicion, direccion, pasosRestantes - 1)
                 }
             }
         }
     }
 
-    method impactarEn(unaPosicion) {
-        const objetos = game.getObjectsIn(unaPosicion)
-        objetos.forEach({ unObjeto => unObjeto.serAlcanzadoPorFuego() })
-        return objetos.any({ unObjeto => not unObjeto.permitePaso() })
-    }
+    method impactarYCrearLlamaEn(unaPosicion) {
+        const objetosEnCelda = game.getObjectsIn(unaPosicion)
+        const conteniaSolido = objetosEnCelda.any({ unObjeto => not unObjeto.permitePaso() })
+        objetosEnCelda.forEach({ unObjeto => unObjeto.serAlcanzadoPorFuego() })
 
-    method crearLlamaVisualEn(unaPosicion) {
         const llama = new Explosion(posicion = unaPosicion)
+        llamasActivas.add(llama)
         game.addVisual(llama)
-        game.schedule(duracionMs, { game.removeVisual(llama) })
+        return conteniaSolido
     }
 
     method esPosicionValida(unaPosicion) {
-        return unaPosicion.x().between(0, game.width() - 1) and unaPosicion.y().between(0, game.height() - 1)
+        return arena.esPosicionDentroDeArena(unaPosicion) and
+               not arena.esBordeExteriorVolcanico(unaPosicion) and
+               not arena.esPosicionEnLava(unaPosicion) and
+               not arena.esMuroIndestructibleFijo(unaPosicion)
     }
 }
 
-class Bomba inherits ElementoTablero { 
-    var property duenio
-    var property alcance
-    var property activa = true
-    
-    override method image() = "bomba.png" //TODO : Generar este sprite con alguna IA 
-    
-    method iniciarCuentaRegresiva() {
-        game.schedule(2500, { self.detonar() })
-    }
-    
-    method detonar() {
-        if (activa) {
-            // Para este caso la bomba explota, desaparece la bomba y luego se propaga el fuego
-            activa = false
-            game.removeVisual(self)
-            duenio.recuperarBomba()
-            
-            const explosion = new Explosion(posicion = self.posicion())
-            explosion.propagar(alcance)
-        }
-    }
-    
-    override method serAlcanzadoPorFuego() {
-        self.detonar() // Si a una bomba lo alcanza el fuego de otra bomba, esta explota en cadena
-    }
-    
-    override method caerAlVacio() {
-        activa = false
-        duenio.recuperarBomba()
+// Power-ups base con Template Method
+class PowerUp inherits Superficie {
+    override method permitePaso() = true
+    override method interactuarCon(unJugador) {
+        self.aplicarEfecto(unJugador)
+        gestorAudio.reproducirPowerUp()
         game.removeVisual(self)
     }
-    
-    override method sumergirEnLava() {
-        self.detonar()
+    override method serAlcanzadoPorFuego() {
+        game.removeVisual(self)
     }
+    method aplicarEfecto(unJugador) {}
+}
+
+class FuegoExtra inherits PowerUp {
+    override method image() = "powerup_fuego.png"
+    override method aplicarEfecto(unJugador) { unJugador.aumentarAlcance() }
+}
+
+class BombaExtra inherits PowerUp {
+    override method image() = "powerup_bomba.png"
+    override method aplicarEfecto(unJugador) { unJugador.aumentarMaxBombas() }
+}
+
+class PatinVelocidad inherits PowerUp {
+    override method image() = "powerup_velocidad.png"
+    override method aplicarEfecto(unJugador) { unJugador.aumentarVelocidad() }
 }

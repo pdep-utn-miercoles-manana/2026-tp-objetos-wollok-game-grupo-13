@@ -1,3 +1,7 @@
 {
-    
+  "name": "2026-tp-objetos-wollok-game-grupo-13",
+  "version": "1.0.0",
+  "resourceFolder": "assets",
+  "wollokVersion": "4.0.0",
+  "license": "ISC"
 }

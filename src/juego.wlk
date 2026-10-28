@@ -98,7 +98,7 @@ object bomberman {
 
 class Bomba {
     method esAtravesable() = false
-    var position
+    const position
     method image() = "assets/bomba.png"
     method position() = position
 
@@ -141,7 +141,7 @@ class Bomba {
 }
 
 class Fuego {
-    var position
+    const position
     method esAtravesable() = true
     method image() = "assets/explocionCentro1.png"
     method position() = position

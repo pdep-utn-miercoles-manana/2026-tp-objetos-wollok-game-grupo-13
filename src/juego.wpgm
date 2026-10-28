@@ -1,7 +1,7 @@
 import wollok.game.*
-import partida.*
+import menu.*
 
 program elSenorDeLasBombas {
-    partida.iniciar()
+    menuSeleccion.iniciar()
     game.start()
 }
