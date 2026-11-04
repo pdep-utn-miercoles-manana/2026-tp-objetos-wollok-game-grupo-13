@@ -17,6 +17,7 @@ class Superficie {
 
 class BaldosaNormal inherits Superficie {
     override method image() = "baldosa_suelo.png"
+    override method colapsarEnAbismo() {}
 }
 
 class BaldosaAbismo inherits Superficie {
@@ -43,12 +44,17 @@ object capaAnilloLava inherits BaldosaAbismo(position = game.at(0, 0)) {
         self.actualizarImagen()
         if (not visible) {
             visible = true
-            game.addVisual(self)
+            if (not game.hasVisual(self)) {
+                game.addVisual(self)
+            }
         }
     }
 
     method ocultar() {
         visible = false
+        if (game.hasVisual(self)) {
+            game.removeVisual(self)
+        }
         imagenActual = "lava_anillo_1_1.png"
     }
 }

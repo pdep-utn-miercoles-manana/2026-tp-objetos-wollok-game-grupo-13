@@ -17,6 +17,15 @@ object partida {
     var property partidaTerminada = false
     var property juegoPausado = false
 
+    method reiniciar() {
+        jugadoresActivos.clear()
+        slotsConfigurados.clear()
+        partidaTerminada = false
+        juegoPausado = false
+        jugadorPrincipal = null
+        interfazUI.reiniciar()
+    }
+
     method iniciar() {
         if (slotsConfigurados.isEmpty()) {
             const slotFrodo = new SlotSelectorJugador(
@@ -100,6 +109,12 @@ object partida {
                 menuSeleccion.iniciar()
             }
         })
+
+        keyboard.enter().onPressDo({
+            if (cinematicaChiste.activo()) {
+                cinematicaChiste.salirAlMenu()
+            }
+        })
     }
 
     method alternarPausa() {
@@ -152,7 +167,11 @@ object partida {
         gestorLava.detener()
         gestorGeiseres.detener()
         ganador.detenerTodoMovimiento()
-        interfazUI.mostrarVictoria(ganador)
+        if (registroVictorias.victoriasDe(ganador.numeroJugador()) >= 5) {
+            cinematicaChiste.iniciar(ganador)
+        } else {
+            interfazUI.mostrarVictoria(ganador)
+        }
     }
 
     method terminarConGameOver() {

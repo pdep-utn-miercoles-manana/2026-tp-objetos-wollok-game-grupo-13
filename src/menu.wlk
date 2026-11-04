@@ -4,6 +4,7 @@ import jugador.*
 import partida.*
 import src.audio.*
 import src.victorias.*
+import src.direcciones.*
 
 class SlotSelectorJugador {
     const property numero
@@ -72,7 +73,7 @@ object logoTituloUI {
 }
 
 object tituloSelectorUI {
-    method position() = game.at(7, 10.4)
+    method position() = new PosicionFluida(x = 7, y = 10.45)
     method permitePaso() = false
     method serAlcanzadoPorFuego() {}
     method colapsarEnAbismo() {}
@@ -168,61 +169,72 @@ object menuSeleccion {
     var property indiceCursor = 0
     var property enMenu = false
 
+    method reiniciarSlotsPorDefecto() {
+        slots.clear()
+        slots.add(new SlotSelectorJugador(
+            numero = 1,
+            columnaUI = 0,
+            activo = true,
+            indicePersonaje = 0,
+            posicionSpawn = game.at(1, 1),
+            descripcionControles = "Flechas + Espacio",
+            teclaArriba = keyboard.up(),
+            teclaAbajo = keyboard.down(),
+            teclaIzquierda = keyboard.left(),
+            teclaDerecha = keyboard.right(),
+            teclaBomba = keyboard.space()
+        ))
+        slots.add(new SlotSelectorJugador(
+            numero = 2,
+            columnaUI = 4,
+            activo = true,
+            indicePersonaje = 1,
+            posicionSpawn = game.at(arena.ancho() - 2, arena.alto() - 2),
+            descripcionControles = "WASD + Tecla E",
+            teclaArriba = keyboard.w(),
+            teclaAbajo = keyboard.s(),
+            teclaIzquierda = keyboard.a(),
+            teclaDerecha = keyboard.d(),
+            teclaBomba = keyboard.e()
+        ))
+        slots.add(new SlotSelectorJugador(
+            numero = 3,
+            columnaUI = 8,
+            activo = false,
+            indicePersonaje = 2,
+            posicionSpawn = game.at(1, arena.alto() - 2),
+            descripcionControles = "IJKL + Tecla U",
+            teclaArriba = keyboard.i(),
+            teclaAbajo = keyboard.k(),
+            teclaIzquierda = keyboard.j(),
+            teclaDerecha = keyboard.l(),
+            teclaBomba = keyboard.u()
+        ))
+        slots.add(new SlotSelectorJugador(
+            numero = 4,
+            columnaUI = 12,
+            activo = false,
+            indicePersonaje = 3,
+            posicionSpawn = game.at(arena.ancho() - 2, 1),
+            descripcionControles = "PadNum + Tecla 0",
+            teclaArriba = keyboard.num8(),
+            teclaAbajo = keyboard.num5(),
+            teclaIzquierda = keyboard.num4(),
+            teclaDerecha = keyboard.num6(),
+            teclaBomba = keyboard.num0()
+        ))
+    }
+
     method inicializarSlotsPorDefecto() {
         if (slots.isEmpty()) {
-            slots.add(new SlotSelectorJugador(
-                numero = 1,
-                columnaUI = 0,
-                activo = true,
-                indicePersonaje = 0,
-                posicionSpawn = game.at(1, 1),
-                descripcionControles = "Flechas + Espacio",
-                teclaArriba = keyboard.up(),
-                teclaAbajo = keyboard.down(),
-                teclaIzquierda = keyboard.left(),
-                teclaDerecha = keyboard.right(),
-                teclaBomba = keyboard.space()
-            ))
-            slots.add(new SlotSelectorJugador(
-                numero = 2,
-                columnaUI = 4,
-                activo = true,
-                indicePersonaje = 1,
-                posicionSpawn = game.at(arena.ancho() - 2, arena.alto() - 2),
-                descripcionControles = "WASD + Tecla E",
-                teclaArriba = keyboard.w(),
-                teclaAbajo = keyboard.s(),
-                teclaIzquierda = keyboard.a(),
-                teclaDerecha = keyboard.d(),
-                teclaBomba = keyboard.e()
-            ))
-            slots.add(new SlotSelectorJugador(
-                numero = 3,
-                columnaUI = 8,
-                activo = false,
-                indicePersonaje = 2,
-                posicionSpawn = game.at(1, arena.alto() - 2),
-                descripcionControles = "IJKL + Tecla U",
-                teclaArriba = keyboard.i(),
-                teclaAbajo = keyboard.k(),
-                teclaIzquierda = keyboard.j(),
-                teclaDerecha = keyboard.l(),
-                teclaBomba = keyboard.u()
-            ))
-            slots.add(new SlotSelectorJugador(
-                numero = 4,
-                columnaUI = 12,
-                activo = false,
-                indicePersonaje = 3,
-                posicionSpawn = game.at(arena.ancho() - 2, 1),
-                descripcionControles = "PadNum + Tecla 0",
-                teclaArriba = keyboard.num8(),
-                teclaAbajo = keyboard.num5(),
-                teclaIzquierda = keyboard.num4(),
-                teclaDerecha = keyboard.num6(),
-                teclaBomba = keyboard.num0()
-            ))
+            self.reiniciarSlotsPorDefecto()
         }
+    }
+
+    method reiniciarValoresJugadores() {
+        registroVictorias.reiniciar()
+        self.reiniciarSlotsPorDefecto()
+        partida.reiniciar()
     }
 
     method iniciar() {
@@ -232,6 +244,7 @@ object menuSeleccion {
         game.clear()
         enMenu = true
         indiceCursor = 0
+        self.reiniciarValoresJugadores()
         if (not game.running()) {
             game.title("El Señor de las Bombas")
             game.width(arena.ancho())
@@ -240,8 +253,6 @@ object menuSeleccion {
             game.ground("baldosa_suelo.png")
             game.boardGround("fondo_tablero.png")
         }
-
-        self.inicializarSlotsPorDefecto()
 
         game.addVisual(fondoSelectorUI)
         game.addVisual(logoTituloUI)

@@ -11,6 +11,7 @@ class BloqueIndestructible inherits Superficie {
 
     override method image() = imagenActual
     override method permitePaso() = false
+    override method colapsarEnAbismo() {}
 
     method actualizarFrame(unNumeroFrame) {
         imagenActual = "muro_indestructible_" + unNumeroFrame + ".png"
@@ -24,6 +25,10 @@ class CajaDestructible inherits Superficie {
     override method serAlcanzadoPorFuego() {
         self.soltarPowerUpOpcional()
         game.removeVisual(self)
+    }
+
+    override method colapsarEnAbismo() {
+        self.serAlcanzadoPorFuego()
     }
 
     method soltarPowerUpOpcional() {
@@ -53,7 +58,13 @@ object gestorBombas {
     }
 
     method detener() {
+        bombasActivas.forEach({ bomba =>
+            if (game.hasVisual(bomba)) game.removeVisual(bomba)
+        })
         bombasActivas.clear()
+        explosionesActivas.forEach({ explosion =>
+            explosion.extinguir()
+        })
         explosionesActivas.clear()
         if (relojActivo) {
             relojActivo = false
@@ -107,8 +118,7 @@ object gestorBombas {
     }
 }
 
-class Bomba {
-    var property posicion
+class Bomba inherits Superficie {
     var property duenio
     var property alcance
     var property duracionMilisegundos = 3000
@@ -117,15 +127,16 @@ class Bomba {
     var frameActual = 1
     var imagenActual = "bomba_1.png"
 
+    method posicion() = position
+    method posicion(unaPosicion) { position = unaPosicion }
     method duracionMs() = duracionMilisegundos
     method duracionMs(unValor) { duracionMilisegundos = unValor }
 
-    method position() = posicion
-    method image() = imagenActual
-    method permitePaso() = false
-    method interactuarCon(unJugador) {}
-    method serAlcanzadoPorFuego() { self.detonar() }
-    method colapsarEnAbismo() { self.detonar() }
+    override method image() = imagenActual
+    override method permitePaso() = false
+    override method interactuarCon(unJugador) {}
+    override method serAlcanzadoPorFuego() { self.detonar() }
+    override method colapsarEnAbismo() { self.detonar() }
 
     method plantar() {
         tiempoRestanteMilisegundos = duracionMilisegundos
@@ -206,11 +217,11 @@ class Explosion {
     }
 
     method expandirHacia(posicionActual, direccion, pasosRestantes) {
-        if (pasosRestantes > 0) {
+        if (pasosRestantes > 0 and not partida.partidaTerminada()) {
             const siguientePosicion = direccion.siguientePosicion(posicionActual)
             if (self.esPosicionValida(siguientePosicion)) {
                 const impactoContraSolido = self.impactarYCrearLlamaEn(siguientePosicion)
-                if (not impactoContraSolido) {
+                if (not impactoContraSolido and not partida.partidaTerminada()) {
                     self.expandirHacia(siguientePosicion, direccion, pasosRestantes - 1)
                 }
             }
@@ -218,13 +229,20 @@ class Explosion {
     }
 
     method impactarYCrearLlamaEn(unaPosicion) {
+        if (partida.partidaTerminada()) {
+            return true
+        }
         const objetosEnCelda = game.getObjectsIn(unaPosicion)
         const conteniaSolido = objetosEnCelda.any({ unObjeto => not unObjeto.permitePaso() })
-        objetosEnCelda.forEach({ unObjeto => unObjeto.serAlcanzadoPorFuego() })
 
         const llama = new Explosion(posicion = unaPosicion)
         llamasActivas.add(llama)
         game.addVisual(llama)
+
+        objetosEnCelda.forEach({ unObjeto => 
+            if (unObjeto != llama) unObjeto.serAlcanzadoPorFuego() 
+        })
+
         return conteniaSolido
     }
 
@@ -246,6 +264,9 @@ class PowerUp inherits Superficie {
     }
     override method serAlcanzadoPorFuego() {
         game.removeVisual(self)
+    }
+    override method colapsarEnAbismo() {
+        self.serAlcanzadoPorFuego()
     }
     method aplicarEfecto(unJugador) {}
 }

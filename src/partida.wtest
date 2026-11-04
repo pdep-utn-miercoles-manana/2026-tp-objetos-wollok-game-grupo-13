@@ -247,4 +247,188 @@ describe "Tests del tablero top-down, jugador, bombas, anillo de magma e interfa
         })
         assert.that(true)
     }
+
+    test "La lava cicla por los 3 aros con su tiempo de espera y duracion de mitad de tiempo regresando a cero" {
+        partida.iniciar()
+        // Mover al jugador al centro del mapa para que no muera al expandirse los aros 2 y 3
+        partida.jugadorPrincipal().posicion(game.at(7, 5))
+
+        // 1. Estado inicial: lava en reposo (nivel 0), esperando 20 segundos para el aro 1
+        assert.equals(0, gestorLava.nivelColapso())
+        assert.notThat(gestorLava.lavaActiva())
+        assert.equals(1, gestorLava.proximoNivel())
+        assert.equals(20, gestorLava.segundosParaColapso())
+
+        // 2. Transcurren los 20 segundos: la lava sube al primer aro
+        (1 .. 20).forEach({ paso => gestorLava.avanzarSegundo() })
+        assert.that(gestorLava.lavaActiva())
+        assert.equals(1, gestorLava.nivelColapso())
+        assert.equals(10, gestorLava.segundosParaColapso())
+        assert.that(arena.esPosicionEnLava(game.at(0, 0)))
+
+        // 3. Transcurre la mitad del tiempo (10 segundos): la lava baja a cero
+        (1 .. 10).forEach({ paso => gestorLava.avanzarSegundo() })
+        assert.notThat(gestorLava.lavaActiva())
+        assert.equals(0, gestorLava.nivelColapso())
+        assert.equals(2, gestorLava.proximoNivel())
+        assert.equals(20, gestorLava.segundosParaColapso())
+        assert.notThat(arena.esPosicionEnLava(game.at(0, 0)))
+
+        // 4. Transcurren 20 segundos de reposo: la lava sube al segundo aro
+        (1 .. 20).forEach({ paso => gestorLava.avanzarSegundo() })
+        assert.that(gestorLava.lavaActiva())
+        assert.equals(2, gestorLava.nivelColapso())
+        assert.equals(10, gestorLava.segundosParaColapso())
+
+        // 5. Transcurre la mitad del tiempo (10 segundos): la lava vuelve a bajar a cero
+        (1 .. 10).forEach({ paso => gestorLava.avanzarSegundo() })
+        assert.notThat(gestorLava.lavaActiva())
+        assert.equals(0, gestorLava.nivelColapso())
+        assert.equals(3, gestorLava.proximoNivel())
+        assert.equals(20, gestorLava.segundosParaColapso())
+
+        // 6. Transcurren 20 segundos de reposo: la lava sube al tercer aro
+        (1 .. 20).forEach({ paso => gestorLava.avanzarSegundo() })
+        assert.that(gestorLava.lavaActiva())
+        assert.equals(3, gestorLava.nivelColapso())
+        assert.equals(10, gestorLava.segundosParaColapso())
+
+        // 7. Transcurre la mitad del tiempo (10 segundos): la lava baja a cero nuevamente
+        (1 .. 10).forEach({ paso => gestorLava.avanzarSegundo() })
+        assert.notThat(gestorLava.lavaActiva())
+        assert.equals(0, gestorLava.nivelColapso())
+        assert.equals(1, gestorLava.proximoNivel())
+        assert.equals(20, gestorLava.segundosParaColapso())
+    }
+
+    test "Al acumular 5 victorias se activa el easter egg chiste con fade in y ENTER regresa al selector" {
+        registroVictorias.reiniciar()
+        // Pre-cargar 4 victorias para el jugador 1
+        (1 .. 4).forEach({ paso => registroVictorias.registrarVictoria(1) })
+        assert.equals(4, registroVictorias.victoriasDe(1))
+
+        partida.iniciar()
+        const frodo = partida.jugadorPrincipal()
+
+        // Conseguir la 5ta victoria
+        partida.terminarConGanador(frodo)
+        assert.equals(5, registroVictorias.victoriasDe(1))
+        assert.that(cinematicaChiste.activo())
+        assert.equals(1, cinematicaChiste.frameActual())
+        assert.equals("chiste_easter_egg_1.png", imagenChisteUI.image())
+
+        // Avanzar el fade in hasta el frame final (25 frames graduales)
+        (1 .. 24).forEach({ paso => cinematicaChiste.avanzarFade() })
+        assert.equals(25, cinematicaChiste.frameActual())
+        assert.equals("chiste_easter_egg_25.png", imagenChisteUI.image())
+        assert.that(textoChisteUI.text().contains("FRODO"))
+
+        // Salir al menú con ENTER
+        cinematicaChiste.salirAlMenu()
+        assert.notThat(cinematicaChiste.activo())
+        assert.that(menuSeleccion.enMenu())
+    }
+
+    test "Si un jugador queda atrapado en el colapso de la lava muere y el sobreviviente en zona segura gana" {
+        registroVictorias.reiniciar()
+        menuSeleccion.iniciar()
+        menuSeleccion.confirmarSeleccionEIniciar()
+
+        assert.equals(2, partida.jugadoresActivos().size())
+        const frodo = partida.jugadoresActivos().get(0)
+        const gandalf = partida.jugadoresActivos().get(1)
+
+        // Frodo queda en su spawn en el aro 1 (1, 1), y Gandalf se refugia en el centro seguro (7, 5)
+        frodo.posicion(game.at(1, 1))
+        gandalf.posicion(game.at(7, 5))
+
+        assert.that(arena.esPosicionDentroDeArena(frodo.posicion()))
+        assert.notThat(arena.esPosicionEnLava(frodo.posicion()))
+
+        // Se activa el primer aro de lava
+        gestorLava.colapsarSiguienteAnillo()
+
+        // Frodo muere por la lava y Gandalf gana la partida
+        assert.notThat(frodo.estaVivo())
+        assert.that(gandalf.estaVivo())
+        assert.that(partida.partidaTerminada())
+        assert.that(interfazUI.victoriaVisible())
+        assert.equals(gandalf, interfazUI.jugadorGanador())
+        assert.equals(1, registroVictorias.victoriasDe(2))
+    }
+
+    test "Si todos los jugadores quedan atrapados en la lava mueren simultáneamente y nadie gana (Game Over)" {
+        registroVictorias.reiniciar()
+        menuSeleccion.iniciar()
+        menuSeleccion.confirmarSeleccionEIniciar()
+
+        assert.equals(2, partida.jugadoresActivos().size())
+        const frodo = partida.jugadoresActivos().get(0)
+        const gandalf = partida.jugadoresActivos().get(1)
+
+        // Ambos jugadores se encuentran en casillas alcanzadas por el aro 1 de lava
+        frodo.posicion(game.at(1, 1))
+        gandalf.posicion(game.at(13, 11))
+
+        // Se activa el aro 1 de lava colapsando sobre ambos
+        gestorLava.colapsarSiguienteAnillo()
+
+        // Ambos mueren y se declara Game Over (nadie gana ni suma victorias)
+        assert.notThat(frodo.estaVivo())
+        assert.notThat(gandalf.estaVivo())
+        assert.equals(0, interfazUI.cantidadJugadoresVivos())
+        assert.that(partida.partidaTerminada())
+        assert.that(interfazUI.gameOverVisible())
+        assert.notThat(interfazUI.victoriaVisible())
+        assert.equals(0, registroVictorias.victoriasDe(1))
+        assert.equals(0, registroVictorias.victoriasDe(2))
+    }
+
+    test "Pisar o interactuar con una baldosa donde la lava está activa causa la muerte del jugador" {
+        partida.iniciar()
+        const frodo = partida.jugadorPrincipal()
+        // Ubicar a Frodo en zona segura (2, 2)
+        frodo.posicion(game.at(2, 2))
+        gestorLava.colapsarSiguienteAnillo() // Aro 1 activo
+        assert.that(frodo.estaVivo())
+
+        // Frodo avanza hacia una casilla en lava (1, 2)
+        frodo.posicion(game.at(1, 2))
+        frodo.verificarInteractuarConSuelo(game.at(1, 2))
+
+        assert.notThat(frodo.estaVivo())
+        assert.that(partida.partidaTerminada())
+        assert.that(interfazUI.gameOverVisible())
+    }
+
+    test "Al volver al selector de personajes se limpian todos los valores de los jugadores para empezar de cero como la primera vez" {
+        // Simular una sesión previa con múltiples victorias y personajes configurados
+        registroVictorias.registrarVictoria(1)
+        registroVictorias.registrarVictoria(1)
+        registroVictorias.registrarVictoria(2)
+        assert.equals(2, registroVictorias.victoriasDe(1))
+        assert.equals(1, registroVictorias.victoriasDe(2))
+
+        menuSeleccion.iniciar()
+        // El selector arranca en estado inicial limpio
+        assert.that(menuSeleccion.enMenu())
+        assert.equals(0, registroVictorias.victoriasDe(1))
+        assert.equals(0, registroVictorias.victoriasDe(2))
+        assert.equals(0, registroVictorias.victoriasDe(3))
+        assert.equals(0, registroVictorias.victoriasDe(4))
+
+        // Slots en su estado original por defecto (2 activos: Frodo y Gandalf, 2 inactivos)
+        assert.equals(2, menuSeleccion.cantidadActivos())
+        assert.equals("frodo", menuSeleccion.slots().get(0).personajeElegido())
+        assert.that(menuSeleccion.slots().get(0).activo())
+        assert.equals("gandalf", menuSeleccion.slots().get(1).personajeElegido())
+        assert.that(menuSeleccion.slots().get(1).activo())
+        assert.notThat(menuSeleccion.slots().get(2).activo())
+        assert.notThat(menuSeleccion.slots().get(3).activo())
+
+        // Jugadores y partida totalmente reiniciados
+        assert.that(partida.jugadoresActivos().isEmpty())
+        assert.notThat(partida.partidaTerminada())
+        assert.notThat(partida.juegoPausado())
+    }
 }

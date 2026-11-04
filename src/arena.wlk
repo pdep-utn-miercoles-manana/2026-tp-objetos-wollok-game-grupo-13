@@ -1,6 +1,7 @@
 import wollok.game.*
 import superficie.*
 import elementos.*
+import src.partida.*
 
 object arena {
     const ancho = 15
@@ -35,7 +36,7 @@ object arena {
                     bloquesIndestructibles.add(bloque)
                     game.addVisual(bloque)
                 } else if (not self.esZonaSeguraSpawn(coordenadaX, coordenadaY) and not gestorGeiseres.esPosicionDeGeiser(celda)) {
-                    // Distribución dinámica / procedural de cajas destructibles (~45% de densidad al azar)
+                    // Distribucion dinamica / procedural de cajas destructibles (~45% de densidad al azar)
                     const probabilidadCaja = 1.randomUpTo(100).round()
                     if (probabilidadCaja <= 45) {
                         game.addVisual(new CajaDestructible(position = celda))
@@ -86,8 +87,8 @@ object arena {
         const coordenadaXRedondeada = unaPosicion.x().round()
         const coordenadaYRedondeada = unaPosicion.y().round()
         return nivel > 0 and self.esPosicionDentroDeArena(unaPosicion) and (
-            coordenadaXRedondeada <= nivel or coordenadaXRedondeada >= ancho - 1 - nivel or
-            coordenadaYRedondeada <= nivel or coordenadaYRedondeada >= alto - 1 - nivel
+            coordenadaXRedondeada <= nivel or coordenadaXRedondeada >= (ancho - 1 - nivel) or
+            coordenadaYRedondeada <= nivel or coordenadaYRedondeada >= (alto - 1 - nivel)
         )
     }
 
@@ -113,11 +114,30 @@ object arena {
 
     method colapsarAnilloActual() {
         capaAnilloLava.mostrar()
-        game.allVisuals().forEach({ unObjetoVisual =>
-            if (self.esPosicionEnLava(unObjetoVisual.position())) {
-                unObjetoVisual.colapsarEnAbismo()
-            }
+
+        // 1. Procesar a los jugadores atrapados en la lava
+        const jugadoresVivos = partida.jugadoresActivos().filter({ unJugador => unJugador.estaVivo() })
+        const jugadoresAtrapados = jugadoresVivos.filter({ unJugador =>
+            self.esPosicionEnLava(unJugador.posicion()) or self.esPosicionEnLava(unJugador.celdaActual())
         })
+
+        if (not jugadoresAtrapados.isEmpty()) {
+            if (jugadoresAtrapados.size() == jugadoresVivos.size()) {
+                // Todos los jugadores vivos quedaron atrapados en la lava: ninguno gana, es Game Over
+                jugadoresAtrapados.forEach({ unJugador => unJugador.serEliminado() })
+                partida.terminarConGameOver()
+            } else {
+                // Mueren los atrapados y se evalúa el fin de juego para los sobrevivientes
+                jugadoresAtrapados.forEach({ unJugador => unJugador.serEliminado() })
+                partida.verificarFinDeJuego()
+            }
+        }
+
+        // 2. Destruir objetos no jugadores en lava (cajas, bombas, mejoras)
+        const objetosAColapsar = game.allVisuals().filter({ unObjetoVisual =>
+            not partida.jugadoresActivos().contains(unObjetoVisual) and self.esPosicionEnLava(unObjetoVisual.position())
+        })
+        objetosAColapsar.forEach({ unObjeto => unObjeto.colapsarEnAbismo() })
     }
 
     method convertirEnAbismo(unaPosicion) {
@@ -223,19 +243,24 @@ object gestorGeiseres {
 
 object gestorLava {
     var property nivelColapso = 0
+    var property proximoNivel = 1
+    var property lavaActiva = false
     const maxNiveles = 3
     const intervaloSegundos = 20
     var property segundosParaColapso = intervaloSegundos
-    var colapsoEnCurso = false
     var relojActivo = false
     var property pausado = false
 
     method maxNiveles() = maxNiveles
-    method colapsoEnCurso() = colapsoEnCurso
+    method intervaloSegundos() = intervaloSegundos
+    method duracionLavaActiva() = (intervaloSegundos / 2).round()
+    method colapsoEnCurso() = lavaActiva
 
     method iniciar() {
         self.detener()
         nivelColapso = 0
+        proximoNivel = 1
+        lavaActiva = false
         segundosParaColapso = intervaloSegundos
         pausado = false
         capaAnilloLava.ocultar()
@@ -245,7 +270,7 @@ object gestorLava {
 
     method detener() {
         pausado = false
-        colapsoEnCurso = false
+        lavaActiva = false
         if (relojActivo) {
             relojActivo = false
             game.removeTickEvent("RELOJ_LAVA")
@@ -253,45 +278,53 @@ object gestorLava {
     }
 
     method avanzarSegundo() {
-        if (relojActivo and not pausado and nivelColapso < maxNiveles) {
+        if (relojActivo and not pausado) {
             segundosParaColapso = 0.max(segundosParaColapso - 1)
             if (segundosParaColapso == 0) {
-                self.colapsarSiguienteAnillo()
+                self.alternarFaseLava()
+            } else if (lavaActiva) {
+                arena.colapsarAnilloActual()
             }
         }
+    }
+
+    method alternarFaseLava() {
+        if (not lavaActiva) {
+            self.activarSiguienteAro()
+        } else {
+            self.bajarLavaACero()
+        }
+    }
+
+    method activarSiguienteAro() {
+        lavaActiva = true
+        nivelColapso = proximoNivel
+        segundosParaColapso = self.duracionLavaActiva()
+        arena.colapsarAnilloActual()
+    }
+
+    method bajarLavaACero() {
+        lavaActiva = false
+        nivelColapso = 0
+        capaAnilloLava.ocultar()
+        proximoNivel = if (proximoNivel >= maxNiveles) 1 else proximoNivel + 1
+        segundosParaColapso = intervaloSegundos
     }
 
     method colapsarSiguienteAnillo() {
-        if (nivelColapso < maxNiveles) {
-            nivelColapso = nivelColapso + 1
-            segundosParaColapso = intervaloSegundos
-            arena.colapsarAnilloActual()
-            if (nivelColapso >= maxNiveles and relojActivo) {
-                segundosParaColapso = 0
-                relojActivo = false
-                game.removeTickEvent("RELOJ_LAVA")
-            }
-        }
+        self.activarSiguienteAro()
     }
 
-    method procesarPasoColapso() {}
-
     method textoRelojLava() {
-        if (colapsoEnCurso) {
-            return "¡MAGMA AVANZANDO!\nCerrando anillo " + nivelColapso
-        }
-        if (nivelColapso >= maxNiveles) {
-            return "LAVA AL MAXIMO\nZona final activa"
+        if (lavaActiva) {
+            return "¡LAVA EN ARO " + nivelColapso + "!\nBaja en " + segundosParaColapso + " seg"
         }
         return "PROX. ANILLO DE LAVA\nEn " + segundosParaColapso + " seg"
     }
 
     method colorRelojLava() {
-        if (colapsoEnCurso or (nivelColapso < maxNiveles and segundosParaColapso <= 5)) {
+        if (lavaActiva or segundosParaColapso <= 5) {
             return "FF4444"
-        }
-        if (nivelColapso >= maxNiveles) {
-            return "FF9933"
         }
         return "FFD700"
     }

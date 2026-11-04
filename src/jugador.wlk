@@ -115,13 +115,19 @@ class Jugador {
     method identificadorTickMovimiento() = "MOVIMIENTO_" + numeroJugador + "_" + self.color()
     method idTickMovimiento() = self.identificadorTickMovimiento()
     
-    method serAlcanzadoPorFuego() {
+    method serEliminado() {
         if (estaVivo) {
             estaVivo = false
             self.detenerTodoMovimiento()
             if (game.hasVisual(self)) {
                 game.removeVisual(self)
             }
+        }
+    }
+
+    method serAlcanzadoPorFuego() {
+        if (estaVivo) {
+            self.serEliminado()
             partida.verificarFinDeJuego()
         }
     }
@@ -283,9 +289,13 @@ class Jugador {
     }
 
     method verificarInteractuarConSuelo(unaPosicion) {
-        game.getObjectsIn(unaPosicion).forEach({ elemento =>
-            if (elemento != self) elemento.interactuarCon(self)
-        })
+        if (arena.esPosicionEnLava(unaPosicion)) {
+            self.serAlcanzadoPorFuego()
+        } else {
+            game.getObjectsIn(unaPosicion).forEach({ elemento =>
+                if (elemento != self) elemento.interactuarCon(self)
+            })
+        }
     }
 
     method plantarBomba() {
@@ -294,7 +304,7 @@ class Jugador {
             bombasActuales = bombasActuales + 1
             tieneCeldaValidada = false
             ultimaCeldaValidada = null
-            const bomba = new Bomba(posicion = celdaBomba, duenio = self, alcance = alcanceFuego)
+            const bomba = new Bomba(position = celdaBomba, duenio = self, alcance = alcanceFuego)
             bomba.plantar()
         }
     }

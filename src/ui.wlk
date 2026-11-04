@@ -1,6 +1,8 @@
 import wollok.game.*
 import arena.*
 import victorias.*
+import menu.*
+import src.direcciones.*
 
 object barraSuperiorFondoUI {
     method position() = game.at(0, arena.alto())
@@ -146,6 +148,14 @@ object interfazUI {
     var property pausaVisible = false
     var property jugadorGanador = null
 
+    method reiniciar() {
+        jugadores.clear()
+        gameOverVisible = false
+        victoriaVisible = false
+        pausaVisible = false
+        jugadorGanador = null
+    }
+
     method iniciar(listaJugadores) {
         jugadores.clear()
         jugadores.addAll(listaJugadores)
@@ -156,13 +166,13 @@ object interfazUI {
 
         game.addVisual(barraSuperiorFondoUI)
 
-        // Ubicaciones de columnas de jugadores calibradas para no superponerse entre sí ni con el reloj de lava
-        const posicionesX = [0, 2.4, 4.8, 7.2]
+        // Ubicaciones de columnas de jugadores calibradas hacia la derecha con PosicionFluida (decimales exactos sin truncamiento)
+        const posicionesX = [0.8, 3.1, 5.4, 7.7]
         (0 .. jugadores.size() - 1).forEach({ indiceJugador =>
             const jugador = jugadores.get(indiceJugador)
             game.addVisual(new IndicadorJugadorUI(
                 jugador = jugador,
-                position = game.at(posicionesX.get(indiceJugador), arena.alto())
+                position = new PosicionFluida(x = posicionesX.get(indiceJugador), y = arena.alto())
             ))
         })
 
@@ -207,4 +217,95 @@ object interfazUI {
 
     method cantidadJugadoresVivos() = jugadores.count({ jugador => jugador.estaVivo() })
     method unicoJugadorVivo() = jugadores.find({ jugador => jugador.estaVivo() })
+}
+
+object imagenChisteUI {
+    method position() = game.at(0, 0)
+    method image() = "chiste_easter_egg_" + cinematicaChiste.frameActual() + ".png"
+    method permitePaso() = false
+    method serAlcanzadoPorFuego() {}
+    method colapsarEnAbismo() {}
+    method interactuarCon(unJugador) {}
+}
+
+object textoChisteUI {
+    method position() = game.at(3.5, 0.7)
+    method permitePaso() = false
+    method serAlcanzadoPorFuego() {}
+    method colapsarEnAbismo() {}
+    method interactuarCon(unJugador) {}
+
+    method text() {
+        if (cinematicaChiste.frameActual() >= cinematicaChiste.totalFrames()) {
+            const nombreGanador = if (cinematicaChiste.ganador() != null) cinematicaChiste.ganador().color().toUpperCase() else "CAMPEON"
+            return "★ ¡" + nombreGanador + " OBTUVO 5 VICTORIAS! ★\n▶ Presiona [ENTER] para ir al selector ◀"
+        }
+        return ""
+    }
+
+    method textColor() = "FFD700"
+}
+
+object cinematicaChiste {
+    var property activo = false
+    var property frameActual = 1
+    const property totalFrames = 25
+    var property ganador = null
+    var relojFadeActivo = false
+
+    method iniciar(unGanador) {
+        activo = true
+        ganador = unGanador
+        frameActual = 1
+
+        game.clear()
+        game.addVisual(imagenChisteUI)
+        game.addVisual(textoChisteUI)
+        self.asegurarLimpiezaVisual()
+
+        keyboard.enter().onPressDo({
+            if (activo) {
+                self.salirAlMenu()
+            }
+        })
+
+        self.iniciarFade()
+    }
+
+    method asegurarLimpiezaVisual() {
+        const visualesPermitidos = [imagenChisteUI, textoChisteUI]
+        game.allVisuals().forEach({ visual =>
+            if (not visualesPermitidos.contains(visual)) {
+                game.removeVisual(visual)
+            }
+        })
+    }
+
+    method iniciarFade() {
+        relojFadeActivo = true
+        game.onTick(260, "FADE_CHISTE", { self.avanzarFade() })
+    }
+
+    method avanzarFade() {
+        if (activo) {
+            self.asegurarLimpiezaVisual()
+            if (frameActual < totalFrames) {
+                frameActual = frameActual + 1
+            } else if (relojFadeActivo) {
+                relojFadeActivo = false
+                game.removeTickEvent("FADE_CHISTE")
+            }
+        }
+    }
+
+    method salirAlMenu() {
+        if (activo) {
+            activo = false
+            if (relojFadeActivo) {
+                relojFadeActivo = false
+                game.removeTickEvent("FADE_CHISTE")
+            }
+            menuSeleccion.iniciar()
+        }
+    }
 }
